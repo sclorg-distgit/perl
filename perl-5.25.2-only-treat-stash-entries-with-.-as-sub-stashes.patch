@@ -1,0 +1,64 @@
+From e7acdfe976f01ee0d1ba31b3b1db61454a72d6c9 Mon Sep 17 00:00:00 2001
+From: David Mitchell <davem@iabyn.com>
+Date: Tue, 21 Jun 2016 17:06:52 +0100
+Subject: [PATCH] only treat stash entries with  .*:: as sub-stashes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RT #128238
+
+%: = 0 would cause an assertion failure in Perl_gv_check(), since when
+it searched a stash for substashes, it assumed anything ending in ':' was
+a substash, whereas substashes end in '::'. So check for a double colon
+before recursing.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ gv.c         | 5 ++++-
+ t/op/stash.t | 9 ++++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/gv.c b/gv.c
+index 4df3bce..2b3bdfa 100644
+--- a/gv.c
++++ b/gv.c
+@@ -2423,7 +2423,10 @@ Perl_gv_check(pTHX_ HV *stash)
+ 	for (entry = HvARRAY(stash)[i]; entry; entry = HeNEXT(entry)) {
+             GV *gv;
+             HV *hv;
+-	    if (HeKEY(entry)[HeKLEN(entry)-1] == ':' &&
++	    STRLEN keylen = HeKLEN(entry);
++            const char * const key = HeKEY(entry);
++
++	    if (keylen >= 2 && key[keylen-2] == ':'  && key[keylen-1] == ':' &&
+ 		(gv = MUTABLE_GV(HeVAL(entry))) && isGV(gv) && (hv = GvHV(gv)))
+ 	    {
+ 		if (hv != PL_defstash && hv != stash
+diff --git a/t/op/stash.t b/t/op/stash.t
+index b8e0f34..ec795a9 100644
+--- a/t/op/stash.t
++++ b/t/op/stash.t
+@@ -7,7 +7,7 @@ BEGIN {
+ 
+ BEGIN { require "./test.pl"; }
+ 
+-plan( tests => 52 );
++plan( tests => 53 );
+ 
+ # Used to segfault (bug #15479)
+ fresh_perl_like(
+@@ -341,3 +341,10 @@ is runperl(
+    ),
+    "ok\n",
+    '[perl #128086] no crash from assigning hash to *:::::: & deleting it';
++
++is runperl(
++    prog => 'BEGIN { %: = 0; $^W=1}; print qq|ok\n|',
++    stderr => 1,
++   ),
++   "ok\n",
++   "[perl #128238] don't treat %: as a stash (needs 2 colons)"
+-- 
+2.5.5
+

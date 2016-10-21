@@ -1,0 +1,66 @@
+From 9e5cda6b852ca831004628051cf32c1576146452 Mon Sep 17 00:00:00 2001
+From: Father Chrysostomos <sprout@cpan.org>
+Date: Thu, 23 Jun 2016 21:57:09 -0700
+Subject: [PATCH] [perl #128238] Crash with non-stash in stash
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This is a follow-up to e7acdfe976f.  Even if the name of the stash
+entry ends with ::, it may not itself contain a real stash (though
+this only happens with code that assigns directly to stash entries,
+which has undefined behaviour according to perlmod), so skip hashes
+that are not stashes.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ gv.c         |  4 ++--
+ t/op/stash.t | 11 +++++++++--
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/gv.c b/gv.c
+index 2b3bdfa..dff611e 100644
+--- a/gv.c
++++ b/gv.c
+@@ -2411,10 +2411,10 @@ Perl_gv_check(pTHX_ HV *stash)
+ 
+     PERL_ARGS_ASSERT_GV_CHECK;
+ 
+-    if (!HvARRAY(stash))
++    if (!SvOOK(stash))
+ 	return;
+ 
+-    assert(SvOOK(stash));
++    assert(HvARRAY(stash));
+ 
+     for (i = 0; i <= (I32) HvMAX(stash); i++) {
+         const HE *entry;
+diff --git a/t/op/stash.t b/t/op/stash.t
+index 1591dbf..fe42700 100644
+--- a/t/op/stash.t
++++ b/t/op/stash.t
+@@ -7,7 +7,7 @@ BEGIN {
+ 
+ BEGIN { require "./test.pl"; }
+ 
+-plan( tests => 53 );
++plan( tests => 54 );
+ 
+ # Used to segfault (bug #15479)
+ fresh_perl_like(
+@@ -342,4 +342,11 @@ is runperl(
+     stderr => 1,
+    ),
+    "ok\n",
+-   "[perl #128238] don't treat %: as a stash (needs 2 colons)"
++   "[perl #128238] don't treat %: as a stash (needs 2 colons)";
++
++is runperl(
++    prog => 'BEGIN { $::{q|foo::|}=*ENV; $^W=1}; print qq|ok\n|',
++    stderr => 1,
++   ),
++   "ok\n",
++   "[perl #128238] non-stashes in stashes";
+-- 
+2.5.5
+

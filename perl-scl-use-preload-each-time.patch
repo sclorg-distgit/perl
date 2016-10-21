@@ -1,0 +1,21 @@
+diff -up perl-5.20.1/Makefile.SH.orig perl-5.20.1/Makefile.SH
+--- perl-5.20.1/Makefile.SH.orig	2015-01-08 09:03:23.371353023 +0100
++++ perl-5.20.1/Makefile.SH	2015-01-08 09:04:06.110815452 +0100
+@@ -146,7 +146,7 @@ true)
+ 	    # INSTALL file, under "Building a shared perl library".
+ 	    # If there is no pre-existing $libperl, we don't need
+ 	    # to do anything further.
+-	    if test -f $archlib/CORE/$libperl; then
++	    # if test -f $archlib/CORE/$libperl; then
+ 		rm -f preload
+ 		cat <<'EOT' > preload
+ #! /bin/sh
+@@ -157,7 +157,7 @@ exec "$@"
+ EOT
+ 		chmod 755 preload
+ 		ldlibpth="$ldlibpth `pwd`/preload `pwd`/$libperl"
+-	    fi
++	    # fi
+ 	    ;;
+ 	os390)	test -f /bin/env && ldlibpth="/bin/env $ldlibpth"
+ 		;;

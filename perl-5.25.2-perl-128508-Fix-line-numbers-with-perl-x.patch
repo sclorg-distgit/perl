@@ -1,0 +1,96 @@
+From b3dd0aba3d2bf0b22280303ef6f068e976e31888 Mon Sep 17 00:00:00 2001
+From: Father Chrysostomos <sprout@cpan.org>
+Date: Sat, 2 Jul 2016 00:08:48 -0700
+Subject: [PATCH] [perl #128508] Fix line numbers with perl -x
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When lex_start is invoked with an SV and a handle pointer, it expects
+the SV to contain the beginning of the code to be parsed.  The handle
+will be read from for subsequent code.
+
+The -x command line option happens to invoke lex_start with two non-
+null pointers like this (a line and a handle), since, to find the
+#!perl line, it has to read that first line out of the file handle.
+
+There is a line of code in lex_start that adds "\n;" to the buffer
+goes back to 8990e30710 (perl 5.0 alpha 6) and string eval fails
+catastrophically without it.
+
+As of v5.19.1-485-g2179133 multiple lines are supported in the current
+parsing buffer (PL_linestr) when there is a file handle, and as of
+v5.19.3-63-gbf1b738 the line number is correctly incremented when the
+parser goes past a newline.
+
+So, for -x, "#!perl\n" turns into "#!perl\n\n" (the final ; is skipped
+as of v5.19.3-63-gbf1b738 if there is a handle).  That throws line
+numbers off by one.
+
+In the case where we have a string to parse and a file handle, the
+extra "\n;" added to the end of the buffer turns out to be completely
+unnecessary.  So this commit makes it conditional on rsfp.
+
+The existing tests for -x are quite exotic.  I have made no effort to
+make them less so.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ t/run/switchx.aux | 7 ++++---
+ t/run/switchx.t   | 4 ++--
+ toke.c            | 3 ++-
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/t/run/switchx.aux b/t/run/switchx.aux
+index b59df4a..106b2f7 100644
+--- a/t/run/switchx.aux
++++ b/t/run/switchx.aux
+@@ -17,11 +17,12 @@ still not perl
+ 
+ #!/some/path/that/leads/to/perl -l
+ 
+-print "1..7";
++print "1..8";
++print "ok 1 - Correct line number" if __LINE__ == 4;
+ if (-f 'run/switchx.aux') {
+-    print "ok 1 - Test file exists";
++    print "ok 2 - Test file exists";
+ }
+-print "ok 2 - Test file utilized";
++print "ok 3 - Test file utilized";
+ # other tests are in switchx2.aux
+ 
+ __END__
+diff --git a/t/run/switchx.t b/t/run/switchx.t
+index bcea3d0..4e57d04 100644
+--- a/t/run/switchx.t
++++ b/t/run/switchx.t
+@@ -15,9 +15,9 @@ print runperl( switches => ['-x'],
+ # Test '-xdir'
+ print runperl( switches => ['-x./run'],
+                progfile => 'run/switchx2.aux',
+-               args     => [ 3 ] );
++               args     => [ 4 ] );
+ 
+-curr_test(5);
++curr_test(6);
+ 
+ # Test the error message for not found
+ like(runperl(switches => ['-x'], progfile => 'run/switchx3.aux', stderr => 1),
+diff --git a/toke.c b/toke.c
+index aebeebb..7e77fae 100644
+--- a/toke.c
++++ b/toke.c
+@@ -723,7 +723,8 @@ Perl_lex_start(pTHX_ SV *line, PerlIO *rsfp, U32 flags)
+ 	parser->linestr = flags & LEX_START_COPIED
+ 			    ? SvREFCNT_inc_simple_NN(line)
+ 			    : newSVpvn_flags(s, len, SvUTF8(line));
+-	sv_catpvn(parser->linestr, "\n;", rsfp ? 1 : 2);
++	if (!rsfp)
++	    sv_catpvs(parser->linestr, "\n;");
+     } else {
+ 	parser->linestr = newSVpvn("\n;", rsfp ? 1 : 2);
+     }
+-- 
+2.5.5
+

@@ -1,0 +1,74 @@
+From 55b6481ff87f84626ba01275708297a42a6537b1 Mon Sep 17 00:00:00 2001
+From: David Mitchell <davem@iabyn.com>
+Date: Tue, 21 Jun 2016 15:23:20 +0100
+Subject: [PATCH] uninit warning from $h{\const} coredumped
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The code that printed the the name and subscript of a hash element
+in an "uninitialized variable" warning assumed that a constant
+hash subscript would be SvPOK. Something like \1 is a constant,
+but is ROK, not POK. SEGVs ensured.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ sv.c            |  5 ++++-
+ t/op/hashwarn.t | 19 ++++++++++++++++++-
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/sv.c b/sv.c
+index 535ee8d..b0fdd15 100644
+--- a/sv.c
++++ b/sv.c
+@@ -15683,9 +15683,12 @@ Perl_varname(pTHX_ const GV *const gv, const char gvtype, PADOFFSET targ,
+ 
+     if (subscript_type == FUV_SUBSCRIPT_HASH) {
+ 	SV * const sv = newSV(0);
++        STRLEN len;
++        const char * const pv = SvPV_nomg_const((SV*)keyname, len);
++
+ 	*SvPVX(name) = '$';
+ 	Perl_sv_catpvf(aTHX_ name, "{%s}",
+-	    pv_pretty(sv, SvPVX_const(keyname), SvCUR(keyname), 32, NULL, NULL,
++	    pv_pretty(sv, pv, len, 32, NULL, NULL,
+ 		    PERL_PV_PRETTY_DUMP | PERL_PV_ESCAPE_UNI_DETECT ));
+ 	SvREFCNT_dec_NN(sv);
+     }
+diff --git a/t/op/hashwarn.t b/t/op/hashwarn.t
+index a6a1de9..6d72244 100644
+--- a/t/op/hashwarn.t
++++ b/t/op/hashwarn.t
+@@ -6,7 +6,7 @@ BEGIN {
+ }
+ 
+ require './test.pl';
+-plan( tests => 16 );
++plan( tests => 18 );
+ 
+ use strict;
+ use warnings;
+@@ -71,3 +71,20 @@ my $fail_not_hr   = 'Not a HASH reference at ';
+     cmp_ok(scalar(@warnings),'==',0,'pseudo-hash 2 count');
+     cmp_ok(substr($@,0,length($fail_not_hr)),'eq',$fail_not_hr,'pseudo-hash 2 msg');
+ }
++
++# RT #128189
++# this used to coredump
++
++{
++    @warnings = ();
++    my %h;
++
++    no warnings;
++    use warnings qw(uninitialized);
++
++    my $x = "$h{\1}";
++    is(scalar @warnings, 1, "RT #128189 - 1 warning");
++    like("@warnings",
++        qr/Use of uninitialized value \$h\{"SCALAR\(0x[\da-f]+\)"\}/,
++        "RT #128189 correct warning");
++}
+-- 
+2.5.5
+
