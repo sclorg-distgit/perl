@@ -1,0 +1,76 @@
+From fc0fe26a7d286480c1bb25f57e469ece575bb68d Mon Sep 17 00:00:00 2001
+From: David Mitchell <davem@iabyn.com>
+Date: Thu, 7 Jul 2016 17:03:29 +0100
+Subject: [PATCH] SEGV in "Subroutine redefined" warning
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RT #128257
+
+The following SEGVed:
+
+    sub P::f{}
+    undef *P::;
+    *P::f =sub{};
+
+due to the code which generates the "Subroutine STASH::NAME redefined"
+warning assuming that the GV always has a stash. Make it so that if it
+hasn't, the message changes to  "Subroutine NAME redefined" rather than
+just crashing.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ sv.c              | 18 +++++++++++-------
+ t/lib/warnings/sv |  8 ++++++++
+ 2 files changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/sv.c b/sv.c
+index 1b7a283..0cbe371 100644
+--- a/sv.c
++++ b/sv.c
+@@ -4074,14 +4074,18 @@ Perl_gv_setref(pTHX_ SV *const dstr, SV *const sstr)
+ 			    CvCONST((const CV *)sref)
+ 				 ? cv_const_sv((const CV *)sref)
+ 				 : NULL;
++                        HV * const stash = GvSTASH((const GV *)dstr);
+ 			report_redefined_cv(
+-			   sv_2mortal(Perl_newSVpvf(aTHX_
+-				"%"HEKf"::%"HEKf,
+-				HEKfARG(
+-				 HvNAME_HEK(GvSTASH((const GV *)dstr))
+-				),
+-				HEKfARG(GvENAME_HEK(MUTABLE_GV(dstr)))
+-			   )),
++			   sv_2mortal(
++                             stash
++                               ? Perl_newSVpvf(aTHX_
++				    "%"HEKf"::%"HEKf,
++				    HEKfARG(HvNAME_HEK(stash)),
++				    HEKfARG(GvENAME_HEK(MUTABLE_GV(dstr))))
++                               : Perl_newSVpvf(aTHX_
++				    "%"HEKf,
++				    HEKfARG(GvENAME_HEK(MUTABLE_GV(dstr))))
++			   ),
+ 			   cv,
+ 			   CvCONST((const CV *)sref) ? &new_const_sv : NULL
+ 			);
+diff --git a/t/lib/warnings/sv b/t/lib/warnings/sv
+index 5ddd4fe..c8e0e62 100644
+--- a/t/lib/warnings/sv
++++ b/t/lib/warnings/sv
+@@ -413,3 +413,11 @@ Argument "a_c" isn't numeric in preincrement (++) at - line 5.
+ Argument "(?^:abc)" isn't numeric in preincrement (++) at - line 6.
+ Argument "123x" isn't numeric in preincrement (++) at - line 7.
+ Argument "123e" isn't numeric in preincrement (++) at - line 8.
++########
++# RT #128257 This used to SEGV
++use warnings;
++sub Foo::f {}
++undef *Foo::;
++*Foo::f =sub {};
++EXPECT
++Subroutine f redefined at - line 5.
+-- 
+2.5.5
+

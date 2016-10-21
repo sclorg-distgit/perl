@@ -1,0 +1,93 @@
+From a2637ca0a3fec01b80d7ea5ba62802354fd5e6f3 Mon Sep 17 00:00:00 2001
+From: Father Chrysostomos <sprout@cpan.org>
+Date: Mon, 11 Jul 2016 14:49:17 -0700
+Subject: [PATCH] [perl #128597] Crash from gp_free/ckWARN_d
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+See the explanation in the test added and in the RT ticket.
+
+The solution is to make the warn macros check that PL_curcop
+is non-null.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ regen/warnings.pl |  6 ++++--
+ t/op/gv.t         | 18 +++++++++++++++++-
+ warnings.h        |  6 ++++--
+ 3 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/regen/warnings.pl b/regen/warnings.pl
+index 815c735..94cd7a4 100644
+--- a/regen/warnings.pl
++++ b/regen/warnings.pl
+@@ -358,8 +358,10 @@ EOM
+ 
+   print $warn <<'EOM';
+ 
+-#define isLEXWARN_on 	cBOOL(PL_curcop->cop_warnings != pWARN_STD)
+-#define isLEXWARN_off	cBOOL(PL_curcop->cop_warnings == pWARN_STD)
++#define isLEXWARN_on \
++	cBOOL(PL_curcop && PL_curcop->cop_warnings != pWARN_STD)
++#define isLEXWARN_off \
++	cBOOL(!PL_curcop || PL_curcop->cop_warnings == pWARN_STD)
+ #define isWARN_ONCE	(PL_dowarn & (G_WARN_ON|G_WARN_ONCE))
+ #define isWARN_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)))
+ #define isWARNf_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)+1))
+diff --git a/t/op/gv.t b/t/op/gv.t
+index d71fd0a..03ae46e 100644
+--- a/t/op/gv.t
++++ b/t/op/gv.t
+@@ -12,7 +12,7 @@ BEGIN {
+ 
+ use warnings;
+ 
+-plan(tests => 276 );
++plan(tests => 277 );
+ 
+ # type coercion on assignment
+ $foo = 'foo';
+@@ -1153,6 +1153,22 @@ pass "No crash due to CvGV pointing to glob copy in the stash";
+     is($c_125840, 1, 'RT #125840: $c=$d');
+ }
+ 
++# [perl #128597] Crash when gp_free calls ckWARN_d
++# I am not sure this test even belongs in this file, as the crash was the
++# result of various features interacting.  But a call to ckWARN_d from
++# gv.c:gp_free triggered the crash, so this seems as good a place as any.
++# ‘die’ (or any abnormal scope exit) can cause the current cop to be freed,
++# if the subroutine containing the ‘die’ gets freed as a result.  That
++# causes PL_curcop to be set to NULL.  If a writable handle gets freed
++# while PL_curcop is NULL, then gp_free will call ckWARN_d while that con-
++# dition still holds, so ckWARN_d needs to know about PL_curcop possibly
++# being NULL.
++SKIP: {
++    skip_if_miniperl("No PerlIO::scalar on miniperl", 1);
++    runperl(prog => 'open my $fh, q|>|, \$buf;'
++                   .'my $sub = eval q|sub {exit 0}|; $sub->()');
++    is ($? & 127, 0,"[perl #128597] No crash when gp_free calls ckWARN_d");
++}
+ 
+ __END__
+ Perl
+diff --git a/warnings.h b/warnings.h
+index 337bef3..4d13732 100644
+--- a/warnings.h
++++ b/warnings.h
+@@ -115,8 +115,10 @@
+ #define WARN_ALLstring			 "\125\125\125\125\125\125\125\125\125\125\125\125\125\125\125\125\125"
+ #define WARN_NONEstring			 "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+ 
+-#define isLEXWARN_on 	cBOOL(PL_curcop->cop_warnings != pWARN_STD)
+-#define isLEXWARN_off	cBOOL(PL_curcop->cop_warnings == pWARN_STD)
++#define isLEXWARN_on \
++	cBOOL(PL_curcop && PL_curcop->cop_warnings != pWARN_STD)
++#define isLEXWARN_off \
++	cBOOL(!PL_curcop || PL_curcop->cop_warnings == pWARN_STD)
+ #define isWARN_ONCE	(PL_dowarn & (G_WARN_ON|G_WARN_ONCE))
+ #define isWARN_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)))
+ #define isWARNf_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)+1))
+-- 
+2.5.5
+

@@ -1,0 +1,73 @@
+From 3f6b66c14467c0f8c7459e32c576618155ca89f3 Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Thu, 16 Jun 2016 14:08:18 +1000
+Subject: [PATCH] (perl #128316) preserve errno from failed system calls
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ pp_sys.c      |  4 ++--
+ t/io/socket.t | 22 ++++++++++++++++++++++
+ 2 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/pp_sys.c b/pp_sys.c
+index 33cba46..3bf2673 100644
+--- a/pp_sys.c
++++ b/pp_sys.c
+@@ -2497,7 +2497,6 @@ PP(pp_socket)
+     TAINT_PROPER("socket");
+     fd = PerlSock_socket(domain, type, protocol);
+     if (fd < 0) {
+-        SETERRNO(EBADF,RMS_IFI);
+ 	RETPUSHUNDEF;
+     }
+     IoIFP(io) = PerlIO_fdopen(fd, "r"SOCKET_OPEN_MODE);	/* stdio gets confused about sockets */
+@@ -3531,8 +3530,9 @@ PP(pp_fttext)
+         }
+ 	PL_laststatval = PerlLIO_fstat(fd, &PL_statcache);
+ 	if (PL_laststatval < 0)	{
++            dSAVE_ERRNO;
+ 	    (void)PerlIO_close(fp);
+-            SETERRNO(EBADF,RMS_IFI);
++            RESTORE_ERRNO;
+ 	    FT_RETURNUNDEF;
+ 	}
+ 	PerlIO_binmode(aTHX_ fp, '<', O_BINARY, NULL);
+diff --git a/t/io/socket.t b/t/io/socket.t
+index b51079a..54e4438 100644
+--- a/t/io/socket.t
++++ b/t/io/socket.t
+@@ -128,6 +128,28 @@ SKIP: {
+     }
+ }
+ 
++SKIP:
++{
++    eval { require Errno; defined &Errno::EMFILE }
++      or skip "Can't load Errno or EMFILE not defined", 1;
++    my @socks;
++    my $sock_limit = 1000; # don't consume every file in the system
++    # Default limits on various systems I have:
++    #  65536 - Linux
++    #    256 - Solaris
++    #    128 - NetBSD
++    #    256 - Cygwin
++    #    256 - darwin
++    while (@socks < $sock_limit) {
++        socket my $work, PF_INET, SOCK_STREAM, $tcp
++          or last;
++        push @socks, $work;
++    }
++    @socks == $sock_limit
++      and skip "Didn't run out of open handles", 1;
++    is(0+$!, Errno::EMFILE(), "check correct errno for too many files");
++}
++
+ done_testing();
+ 
+ my @child_tests;
+-- 
+2.5.5
+
