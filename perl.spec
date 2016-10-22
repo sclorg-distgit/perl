@@ -10,7 +10,7 @@
 %global tapsetdir   %{_datadir}/systemtap/tapset
 
 %global dual_life 0
-%global rebuild_from_scratch 1
+%global rebuild_from_scratch %{defined perl_bootstrap}
 
 %if ! ( 0%{?rhel} && 0%{?rhel} < 7 )
 # This overrides filters from build root (/usr/lib/rpm/macros.d/macros.perl)
@@ -34,7 +34,7 @@
 Name:           %{?scl_prefix}perl
 Version:        %{perl_version}
 # release number must be even higher, because dual-lived modules will be broken otherwise
-Release:        375%{?dist}
+Release:        376%{?dist}
 Epoch:          %{perl_epoch}
 Summary:        Practical Extraction and Report Language
 Group:          Development/Languages
@@ -2274,18 +2274,18 @@ Install this package if you want to program in Perl or enable your system to
 handle Perl scripts with %{_bindir}/perl interpreter.
 
 If your script requires some Perl modules, you can install them with
-"perl(MODULE)" where "MODULE" is a name of required module. E.g. install
-"perl(Test::More)" to make Test::More Perl module available.
+"%{?scl_prefix}perl(MODULE)" where "MODULE" is a name of required module. E.g. install
+"%{?scl_prefix}perl(Test::More)" to make Test::More Perl module available.
 
 If you need all the Perl modules that come with upstream Perl sources, so
-called core modules, install perl-core package.
+called core modules, install %{?scl_prefix}perl-core package.
 
 If you only need perl run-time as a shared library, i.e. Perl interpreter
-embedded into another application, the only essential package is perl-libs.
+embedded into another application, the only essential package is %{?scl_prefix}perl-libs.
 
-Perl header files can be found in perl-devel package.
+Perl header files can be found in %{?scl_prefix}perl-devel package.
 
-Perl utils like "splain" or "perlbug" can be found in perl-utils package.
+Perl utils like "splain" or "perlbug" can be found in %{?scl_prefix}perl-utils package.
 
 
 %package libs
@@ -5263,6 +5263,8 @@ popd
 %exclude %{archlib}/CORE/*.h
 %exclude %{_libdir}/libperl.so
 %exclude %{_mandir}/man1/perlxs*
+%{?scl:%exclude %dir %{_datadir}/systemtap}
+%{?scl:%exclude %dir %{_datadir}/systemtap/tapset}
 
 # utils
 %exclude %{_bindir}/c2ph
@@ -6141,6 +6143,9 @@ popd
 %{archlib}/CORE/*.h
 %{_libdir}/libperl.so
 %{_mandir}/man1/perlxs*
+# Fix BZ#956215 - Unowned files
+%{?scl:%dir %{_datadir}/systemtap}
+%{?scl:%dir %{_datadir}/systemtap/tapset}
 %{tapsetdir}/%{libperl_stp}
 %doc perl-example.stp
 
@@ -7219,6 +7224,9 @@ popd
 
 # Old changelog entries are preserved in CVS.
 %changelog
+* Mon Jul 25 2016 Jitka Plesnikova <jplesnik@redhat.com> - 4:5.24.0-376
+- Rebuilt without dual-life sub-packages
+
 * Sun Jul 24 2016 Petr Pisar <ppisar@redhat.com> - 4:5.24.0-375
 - Rebuild without bootstrap
 
