@@ -34,7 +34,7 @@
 Name:           %{?scl_prefix}perl
 Version:        %{perl_version}
 # release number must be even higher, because dual-lived modules will be broken otherwise
-Release:        376%{?dist}
+Release:        377%{?dist}
 Epoch:          %{perl_epoch}
 Summary:        Practical Extraction and Report Language
 Group:          Development/Languages
@@ -2236,8 +2236,6 @@ Requires(post): %{?scl_prefix}perl-libs
 # because of git.
 Requires(post): %{?scl_prefix}perl-macros
 
-%{?scl:Requires: %{scl_name}-runtime}
-
 %if ( 0%{?rhel} && 0%{?rhel} < 7 )
 # filter pkgconfig Provides and Requires
 %{?scl:
@@ -2316,6 +2314,7 @@ Requires:       %{?scl_prefix}perl(XSLoader)
 %if %{defined perl_bootstrap}
 %gendep_perl_libs
 %endif
+%{?scl:Requires: %{scl_name}-runtime}
 
 # Remove private redefinitions
 # XSLoader redefines DynaLoader name space for compatibility, but does not
@@ -7224,6 +7223,9 @@ popd
 
 # Old changelog entries are preserved in CVS.
 %changelog
+* Mon Jul 25 2016 Petr Pisar <ppisar@redhat.com> - 4:5.24.0-377
+- Move dependency on runtime package to perl-libs
+
 * Mon Jul 25 2016 Jitka Plesnikova <jplesnik@redhat.com> - 4:5.24.0-376
 - Rebuilt without dual-life sub-packages
 
