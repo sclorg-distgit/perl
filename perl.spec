@@ -34,7 +34,7 @@
 Name:           %{?scl_prefix}perl
 Version:        %{perl_version}
 # release number must be even higher, because dual-lived modules will be broken otherwise
-Release:        374%{?dist}
+Release:        375%{?dist}
 Epoch:          %{perl_epoch}
 Summary:        Practical Extraction and Report Language
 Group:          Development/Languages
@@ -7219,6 +7219,9 @@ popd
 
 # Old changelog entries are preserved in CVS.
 %changelog
+* Sun Jul 24 2016 Petr Pisar <ppisar@redhat.com> - 4:5.24.0-375
+- Rebuild without bootstrap
+
 * Tue Jul 12 2016 Petr Pisar <ppisar@redhat.com> - 4:5.24.0-374
 - Fix a crash in lexical scope warnings (RT#128597)
 
