@@ -1,0 +1,62 @@
+From 9b3f53bd7af9574dcc38432cb191b90e9f957362 Mon Sep 17 00:00:00 2001
+From: Karl Williamson <khw@cpan.org>
+Date: Wed, 27 Jul 2016 12:44:42 -0600
+Subject: [PATCH] PATCH: [perl #128734] tr/\N{...}/ failing for 128-255
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The upper latin1 characters when expressed as \N{U+...} were failing.
+This was due to trying to convert them to UTF-8 when the result isn't
+UTF-8.  I added a test for \N{name} as well, though these were not
+affected by this regression.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ t/op/tr.t | 11 ++++++++++-
+ toke.c    |  2 +-
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/t/op/tr.t b/t/op/tr.t
+index 6783dad..d40187f 100644
+--- a/t/op/tr.t
++++ b/t/op/tr.t
+@@ -9,7 +9,7 @@ BEGIN {
+     set_up_inc('../lib');
+ }
+ 
+-plan tests => 164;
++plan tests => 166;
+ 
+ # Test this first before we extend the stack with other operations.
+ # This caused an asan failure due to a bad write past the end of the stack.
+@@ -643,4 +643,13 @@ for ("", nullrocow) {
+ 	ok(1, "tr///d on glob does not assert");
+ }
+ 
++{ # [perl #128734
++    my $string = "\x{00e0}";
++    $string =~ tr/\N{U+00e0}/A/;
++    is($string, "A", 'tr// of \N{U+...} works for upper-Latin1');
++    $string = "\x{00e1}";
++    $string =~ tr/\N{LATIN SMALL LETTER A WITH ACUTE}/A/;
++    is($string, "A", 'tr// of \N{name} works for upper-Latin1');
++}
++
+ 1;
+diff --git a/toke.c b/toke.c
+index 59a0749..52e658f 100644
+--- a/toke.c
++++ b/toke.c
+@@ -3540,7 +3540,7 @@ S_scan_const(pTHX_ char *start)
+ 			}
+ 
+                         /* Add the (Unicode) code point to the output. */
+-			if (OFFUNI_IS_INVARIANT(uv)) {
++			if (! has_utf8 || OFFUNI_IS_INVARIANT(uv)) {
+ 			    *d++ = (char) LATIN1_TO_NATIVE(uv);
+ 			}
+ 			else {
+-- 
+2.5.5
+
