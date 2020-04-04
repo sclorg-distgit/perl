@@ -1,0 +1,78 @@
+From 0c311b7c345769239f38d0139ea7738feec5ca4d Mon Sep 17 00:00:00 2001
+From: Karl Williamson <khw@cpan.org>
+Date: Sat, 2 Nov 2019 13:59:38 -0600
+Subject: [PATCH] toke.c: Fix bug tr/// upgrading to UTF-8 in middle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Consider tr/\x{ff}-\x{100}/AB/.
+
+While parsing, the code keeps an offset from the beginning of the output
+to the beginning of the second number in the range.  This is purely for
+speed so that it wouldn't have to re-find the beginning of that value,
+when it already knew it.
+
+But the example above shows the folly of this shortcut.  The second
+number in the range causes the output to be upgraded to UTF-8, which
+makes that offset invalid in general.  Change to re-find the beginning.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ t/op/tr.t | 12 +++++++++++-
+ toke.c    |  4 +++-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/t/op/tr.t b/t/op/tr.t
+index 47d603d4fd..25125c5bc7 100644
+--- a/t/op/tr.t
++++ b/t/op/tr.t
+@@ -13,7 +13,7 @@ BEGIN {
+ 
+ use utf8;
+ 
+-plan tests => 301;
++plan tests => 304;
+ 
+ # Test this first before we extend the stack with other operations.
+ # This caused an asan failure due to a bad write past the end of the stack.
+@@ -1145,4 +1145,14 @@ for ("", nullrocow) {
+                     'RT #133880 illegal \N{}');
+ }
+ 
++{
++    my $c = "\xff";
++    my $d = "\x{104}";
++    eval '$c =~ tr/\x{ff}-\x{104}/\x{100}-\x{105}/';
++    is($@, "", 'tr/\x{ff}-\x{104}/\x{100}-\x{105}/ compiled');
++    is($c, "\x{100}", 'ff -> 100');
++    eval '$d =~ tr/\x{ff}-\x{104}/\x{100}-\x{105}/';
++    is($d, "\x{105}", '104 -> 105');
++}
++
+ 1;
+diff --git a/toke.c b/toke.c
+index 2995737af2..28f305c62c 100644
+--- a/toke.c
++++ b/toke.c
+@@ -3044,7 +3044,7 @@ S_scan_const(pTHX_ char *start)
+                  * 'offset_to_max' is the offset in 'sv' at which the character
+                  *      (the range's maximum end point) before 'd'  begins.
+                  */
+-                char * max_ptr = SvPVX(sv) + offset_to_max;
++                char * max_ptr;
+                 char * min_ptr;
+                 IV range_min;
+ 		IV range_max;	/* last character in range */
+@@ -3056,6 +3056,8 @@ S_scan_const(pTHX_ char *start)
+                 IV real_range_max = 0;
+ #endif
+                 /* Get the code point values of the range ends. */
++                max_ptr = (d_is_utf8) ? (char *) utf8_hop( (U8*) d, -1) : d - 1;
++                offset_to_max = max_ptr - SvPVX_const(sv);
+                 if (d_is_utf8) {
+                     /* We know the utf8 is valid, because we just constructed
+                      * it ourselves in previous loop iterations */
+-- 
+2.21.0
+

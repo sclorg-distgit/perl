@@ -1,0 +1,237 @@
+From 01aed385e6bdbdcfd13bb66e9d8b7c55d2cfc34a Mon Sep 17 00:00:00 2001
+From: James E Keenan <jkeenan@cpan.org>
+Date: Thu, 19 Sep 2019 23:02:54 -0400
+Subject: [PATCH] Handle undefined values correctly
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+As reported by Henrik Pauli in RT 134441, the documentation's claim that
+
+        $dv->dumpValue([$x, $y]);
+
+and
+
+        $dv->dumpValues($x, $y);
+
+was not being sustained in the case where one of the elements in the
+array (or array ref) was undefined.  This was due to an insufficiently
+precise specification within the dumpValues() method for determining
+when the value "undef\n" should be printed.
+
+Tests for previously untested cases have been provided in
+t/rt-134441-dumpvalue.t.  They were not appended to t/Dumpvalue.t (as
+would normally have been the case) because the tests in that file have
+accreted over the years in a sub-optimal manner:  changes in attributes
+of the Dumpvalue object are tested but those changes are not zeroed-out
+(by, e.g., use of 'local $self->{attribute} = undef')
+before additional attributes are modified and tested.  As a consequence,
+it's difficult to determine the state of the Dumpvalue object at any
+particular point and interactions between attributes cannot be ruled
+out.
+
+Package TieOut, used to capture STDOUT during testing, has been
+extracted to its own file so that it can be used by all test files.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ MANIFEST                               |  2 +
+ dist/Dumpvalue/lib/Dumpvalue.pm        |  4 +-
+ dist/Dumpvalue/t/Dumpvalue.t           | 20 +-----
+ dist/Dumpvalue/t/lib/TieOut.pm         | 20 ++++++
+ dist/Dumpvalue/t/rt-134441-dumpvalue.t | 86 ++++++++++++++++++++++++++
+ 5 files changed, 112 insertions(+), 20 deletions(-)
+ create mode 100644 dist/Dumpvalue/t/lib/TieOut.pm
+ create mode 100644 dist/Dumpvalue/t/rt-134441-dumpvalue.t
+
+diff --git a/MANIFEST b/MANIFEST
+index 7bf62d8479..8159ac8cc1 100644
+--- a/MANIFEST
++++ b/MANIFEST
+@@ -3455,6 +3455,8 @@ dist/Devel-SelfStubber/lib/Devel/SelfStubber.pm	Generate stubs for SelfLoader.pm
+ dist/Devel-SelfStubber/t/Devel-SelfStubber.t	See if Devel::SelfStubber works
+ dist/Dumpvalue/lib/Dumpvalue.pm	Screen dump of perl values
+ dist/Dumpvalue/t/Dumpvalue.t	See if Dumpvalue works
++dist/Dumpvalue/t/lib/TieOut.pm	Helper module for Dumpvalue tests
++dist/Dumpvalue/t/rt-134441-dumpvalue.t	See if Dumpvalue works
+ dist/encoding-warnings/lib/encoding/warnings.pm	warn on implicit encoding conversions
+ dist/encoding-warnings/t/1-warning.t	tests for encoding::warnings
+ dist/encoding-warnings/t/2-fatal.t	tests for encoding::warnings
+diff --git a/dist/Dumpvalue/lib/Dumpvalue.pm b/dist/Dumpvalue/lib/Dumpvalue.pm
+index eef9b27157..3faf829538 100644
+--- a/dist/Dumpvalue/lib/Dumpvalue.pm
++++ b/dist/Dumpvalue/lib/Dumpvalue.pm
+@@ -1,7 +1,7 @@
+ use 5.006_001;			# for (defined ref) and $#$v and our
+ package Dumpvalue;
+ use strict;
+-our $VERSION = '1.18';
++our $VERSION = '1.19';
+ our(%address, $stab, @stab, %stab, %subs);
+ 
+ sub ASCII { return ord('A') == 65; }
+@@ -79,7 +79,7 @@ sub dumpValues {
+   my $self = shift;
+   local %address;
+   local $^W=0;
+-  (print "undef\n"), return unless defined $_[0];
++  (print "undef\n"), return if (@_ == 1 and not defined $_[0]);
+   $self->unwrap(\@_,0);
+ }
+ 
+diff --git a/dist/Dumpvalue/t/Dumpvalue.t b/dist/Dumpvalue/t/Dumpvalue.t
+index 7063dd984c..ba8775126e 100644
+--- a/dist/Dumpvalue/t/Dumpvalue.t
++++ b/dist/Dumpvalue/t/Dumpvalue.t
+@@ -16,6 +16,8 @@ BEGIN {
+ 
+ our ( $foo, @bar, %baz );
+ 
++use lib ("./t/lib");
++use TieOut;
+ use Test::More tests => 88;
+ 
+ use_ok( 'Dumpvalue' );
+@@ -278,21 +280,3 @@ is( $out->read, "0  0..0  'two'\n", 'dumpValues worked on array ref' );
+ $d->dumpValues('one', 'two');
+ is( $out->read, "0..1  'one' 'two'\n", 'dumpValues worked on multiple values' );
+ 
+-
+-package TieOut;
+-use overload '"' => sub { "overloaded!" };
+-
+-sub TIEHANDLE {
+-	my $class = shift;
+-	bless(\( my $ref), $class);
+-}
+-
+-sub PRINT {
+-	my $self = shift;
+-	$$self .= join('', @_);
+-}
+-
+-sub read {
+-	my $self = shift;
+-	return substr($$self, 0, length($$self), '');
+-}
+diff --git a/dist/Dumpvalue/t/lib/TieOut.pm b/dist/Dumpvalue/t/lib/TieOut.pm
+new file mode 100644
+index 0000000000..568caedf9c
+--- /dev/null
++++ b/dist/Dumpvalue/t/lib/TieOut.pm
+@@ -0,0 +1,20 @@
++package TieOut;
++use overload '"' => sub { "overloaded!" };
++
++sub TIEHANDLE {
++	my $class = shift;
++	bless(\( my $ref), $class);
++}
++
++sub PRINT {
++	my $self = shift;
++	$$self .= join('', @_);
++}
++
++sub read {
++	my $self = shift;
++	return substr($$self, 0, length($$self), '');
++}
++
++1;
++
+diff --git a/dist/Dumpvalue/t/rt-134441-dumpvalue.t b/dist/Dumpvalue/t/rt-134441-dumpvalue.t
+new file mode 100644
+index 0000000000..cc9f270f5a
+--- /dev/null
++++ b/dist/Dumpvalue/t/rt-134441-dumpvalue.t
+@@ -0,0 +1,86 @@
++BEGIN {
++	require Config;
++	if (($Config::Config{'extensions'} !~ m!\bList/Util\b!) ){
++	    print "1..0 # Skip -- Perl configured without List::Util module\n";
++	    exit 0;
++	}
++
++	# `make test` in the CPAN version of this module runs us with -w, but
++	# Dumpvalue.pm relies on all sorts of things that can cause warnings. I
++	# don't think that's worth fixing, so we just turn off all warnings
++	# during testing.
++	$^W = 0;
++}
++
++use lib ("./t/lib");
++use TieOut;
++use Test::More tests => 17;
++
++use_ok( 'Dumpvalue' );
++
++my $d;
++ok( $d = Dumpvalue->new(), 'create a new Dumpvalue object' );
++
++my $out = tie *OUT, 'TieOut';
++select(OUT);
++
++my (@foobar, $x, $y);
++
++@foobar = ('foo', 'bar');
++$d->dumpValue([@foobar]);
++$x = $out->read;
++is( $x, "0  'foo'\n1  'bar'\n", 'dumpValue worked on array ref' );
++$d->dumpValues(@foobar);
++$y = $out->read;
++is( $y, "0  'foo'\n1  'bar'\n", 'dumpValues worked on array' );
++is( $y, $x,
++    "dumpValues called on array returns same as dumpValue on array ref");
++
++@foobar = (undef, 'bar');
++$d->dumpValue([@foobar]);
++$x = $out->read;
++is( $x, "0  undef\n1  'bar'\n",
++    'dumpValue worked on array ref, first element undefined' );
++$d->dumpValues(@foobar);
++$y = $out->read;
++is( $y, "0  undef\n1  'bar'\n",
++    'dumpValues worked on array, first element undefined' );
++is( $y, $x,
++    "dumpValues called on array returns same as dumpValue on array ref, first element undefined");
++
++@foobar = ('bar', undef);
++$d->dumpValue([@foobar]);
++$x = $out->read;
++is( $x, "0  'bar'\n1  undef\n",
++    'dumpValue worked on array ref, last element undefined' );
++$d->dumpValues(@foobar);
++$y = $out->read;
++is( $y, "0  'bar'\n1  undef\n",
++    'dumpValues worked on array, last element undefined' );
++is( $y, $x,
++    "dumpValues called on array returns same as dumpValue on array ref, last element undefined");
++
++@foobar = ('', 'bar');
++$d->dumpValue([@foobar]);
++$x = $out->read;
++is( $x, "0  ''\n1  'bar'\n",
++    'dumpValue worked on array ref, first element empty string' );
++$d->dumpValues(@foobar);
++$y = $out->read;
++is( $y, "0  ''\n1  'bar'\n",
++    'dumpValues worked on array, first element empty string' );
++is( $y, $x,
++    "dumpValues called on array returns same as dumpValue on array ref, first element empty string");
++
++@foobar = ('bar', '');
++$d->dumpValue([@foobar]);
++$x = $out->read;
++is( $x, "0  'bar'\n1  ''\n",
++    'dumpValue worked on array ref, last element empty string' );
++$d->dumpValues(@foobar);
++$y = $out->read;
++is( $y, "0  'bar'\n1  ''\n",
++    'dumpValues worked on array, last element empty string' );
++is( $y, $x,
++    "dumpValues called on array returns same as dumpValue on array ref, last element empty string");
++
+-- 
+2.21.0
+

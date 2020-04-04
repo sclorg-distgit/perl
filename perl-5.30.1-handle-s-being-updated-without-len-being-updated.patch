@@ -1,0 +1,47 @@
+From a0148bb8496444302b087bc0ffcf8dad42f8e475 Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Mon, 11 Nov 2019 14:43:42 +1100
+Subject: [PATCH] handle s being updated without len being updated
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+fix #17279
+
+Petr Písař: Ported to 5.30.1 from
+e56dfd967ce460481a9922d14e931b438548093d.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ numeric.c           | 2 +-
+ t/lib/croak/regcomp | 4 ++++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/numeric.c b/numeric.c
+index d6ce53e..35adebe 100644
+--- a/numeric.c
++++ b/numeric.c
+@@ -1552,7 +1552,7 @@ Perl_my_atof3(pTHX_ const char* orig, NV* value, const STRLEN len)
+         /* strtold() accepts 0x-prefixed hex and in POSIX implementations,
+            0b-prefixed binary numbers, which is backward incompatible
+         */
+-        if ((len == 0 || len >= 2) && *s == '0' &&
++        if ((len == 0 || len - (s-orig) >= 2) && *s == '0' &&
+             (isALPHA_FOLD_EQ(s[1], 'x') || isALPHA_FOLD_EQ(s[1], 'b'))) {
+             *value = 0;
+             return (char *)s+1;
+diff --git a/t/lib/croak/regcomp b/t/lib/croak/regcomp
+index 0ba705e..c0c2710 100644
+--- a/t/lib/croak/regcomp
++++ b/t/lib/croak/regcomp
+@@ -70,3 +70,7 @@ qr/((a))/;
+ EXPECT
+ Too many nested open parens in regex; marked by <-- HERE in m/(( <-- HERE a))/ at - line 3.
+ ########
++# NAME numeric parsing buffer overflow in numeric.c
++0=~/\p{nV:-0}/
++EXPECT
++Can't find Unicode property definition "nV:-0" in regex; marked by <-- HERE in m/\p{nV:-0} <-- HERE / at - line 1.
+-- 
+2.21.0
+

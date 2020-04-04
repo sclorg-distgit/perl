@@ -1,0 +1,77 @@
+From a4e94e39cfa6852b1d57e61ee122c8083ab9d82e Mon Sep 17 00:00:00 2001
+From: Hauke D <haukex@zero-g.net>
+Date: Mon, 20 Nov 2017 15:31:57 +0100
+Subject: [PATCH] Tie::StdHandle::BINMODE: handle layer argument
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fixes #16262
+
+BINMODE was not handling the LAYER argument.
+Also bump the version number.
+
+(cherry picked from commit 479d04b98e5b747e5c9ead7368d3e132f524a2b7)
+Signed-off-by: Nicolas R <atoomic@cpan.org>
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ lib/Tie/Handle/stdhandle.t | 13 ++++++++++++-
+ lib/Tie/StdHandle.pm       |  4 ++--
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/lib/Tie/Handle/stdhandle.t b/lib/Tie/Handle/stdhandle.t
+index d2f04bcc5c..6c20d90f2b 100644
+--- a/lib/Tie/Handle/stdhandle.t
++++ b/lib/Tie/Handle/stdhandle.t
+@@ -5,7 +5,7 @@ BEGIN {
+     @INC = '../lib';
+ }
+ 
+-use Test::More tests => 27;
++use Test::More tests => 29;
+ 
+ use_ok('Tie::StdHandle');
+ 
+@@ -72,6 +72,17 @@ is($b, "rhubarbX\n", "b eq rhubarbX");
+ $b = <$f>;
+ is($b, "89\n", "b eq 89");
+ 
++# binmode should pass through layer argument
++
++binmode $f, ':raw';
++ok !grep( $_ eq 'utf8', PerlIO::get_layers(tied(*$f)) ),
++    'no utf8 in layers after binmode :raw';
++binmode $f, ':utf8';
++ok grep( $_ eq 'utf8', PerlIO::get_layers(tied(*$f)) ),
++    'utf8 is in layers after binmode :utf8';
++
++# finish up
++
+ ok(eof($f), "eof");
+ ok(close($f), "close");
+ 
+diff --git a/lib/Tie/StdHandle.pm b/lib/Tie/StdHandle.pm
+index dfb86634f0..fb79a986c6 100644
+--- a/lib/Tie/StdHandle.pm
++++ b/lib/Tie/StdHandle.pm
+@@ -4,7 +4,7 @@ use strict;
+ 
+ use Tie::Handle;
+ our @ISA = 'Tie::Handle';
+-our $VERSION = '4.5';
++our $VERSION = '4.6';
+ 
+ =head1 NAME
+ 
+@@ -48,7 +48,7 @@ sub TELL    { tell($_[0]) }
+ sub FILENO  { fileno($_[0]) }
+ sub SEEK    { seek($_[0],$_[1],$_[2]) }
+ sub CLOSE   { close($_[0]) }
+-sub BINMODE { binmode($_[0]) }
++sub BINMODE { &CORE::binmode(shift, @_) }
+ 
+ sub OPEN
+ {
+-- 
+2.21.0
+

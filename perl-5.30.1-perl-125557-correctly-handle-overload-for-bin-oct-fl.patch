@@ -1,0 +1,116 @@
+From b061e315b4eac4d82edb3ca14581805417a68936 Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Wed, 11 Sep 2019 11:50:23 +1000
+Subject: [PATCH] (perl #125557) correctly handle overload for bin/oct floats
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The hexfp code doesn't check that the shift is 4, and so also
+accepts binary and octal fp numbers.
+
+Unfortunately the call to S_new_constant() always passed a prefix
+of 0x, so overloading would be trying to parse the wrong number.
+
+Another option is to simply allow only hex floats, though some work
+was done in 131894 to improve oct/bin float support.
+
+Petr Písař: Ported to 5.30.1 from
+2cb5a7e8af11acb0eca22421ec5a4df7ef18e2a9.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ t/op/hexfp.t | 16 +++++++++++++++-
+ toke.c       | 21 ++++++++++++++++-----
+ 2 files changed, 31 insertions(+), 6 deletions(-)
+
+diff --git a/t/op/hexfp.t b/t/op/hexfp.t
+index 64f8136..0f239d4 100644
+--- a/t/op/hexfp.t
++++ b/t/op/hexfp.t
+@@ -10,7 +10,7 @@ use strict;
+ 
+ use Config;
+ 
+-plan(tests => 123);
++plan(tests => 125);
+ 
+ # Test hexfloat literals.
+ 
+@@ -277,6 +277,20 @@ is(0b1p0, 1);
+ is(0b10p0, 2);
+ is(0b1.1p0, 1.5);
+ 
++# previously these would pass "0x..." to the overload instead of the appropriate
++# "0b" or "0" prefix.
++fresh_perl_is(<<'CODE', "1", {}, "overload binary fp");
++use overload;
++BEGIN { overload::constant float => sub { return eval $_[0]; }; }
++print 0b0.1p1;
++CODE
++
++fresh_perl_is(<<'CODE', "1", {}, "overload octal fp");
++use overload;
++BEGIN { overload::constant float => sub { return eval $_[0]; }; }
++print 00.1p3;
++CODE
++
+ # sprintf %a/%A testing is done in sprintf2.t,
+ # trickier than necessary because of long doubles,
+ # and because looseness of the spec.
+diff --git a/toke.c b/toke.c
+index 03c4f2b..3fa20dc 100644
+--- a/toke.c
++++ b/toke.c
+@@ -10966,6 +10966,7 @@ Perl_scan_num(pTHX_ const char *start, YYSTYPE* lvalp)
+     const char *lastub = NULL;		/* position of last underbar */
+     static const char* const number_too_long = "Number too long";
+     bool warned_about_underscore = 0;
++    I32 shift; /* shift per digit for hex/oct/bin, hoisted here for fp */
+ #define WARN_ABOUT_UNDERSCORE() \
+ 	do { \
+ 	    if (!warned_about_underscore) { \
+@@ -11012,8 +11013,6 @@ Perl_scan_num(pTHX_ const char *start, YYSTYPE* lvalp)
+ 	{
+ 	  /* variables:
+ 	     u		holds the "number so far"
+-	     shift	the power of 2 of the base
+-			(hex == 4, octal == 3, binary == 1)
+ 	     overflowed	was the number more than we can hold?
+ 
+ 	     Shift is used when we add a digit.  It also serves as an "are
+@@ -11022,7 +11021,6 @@ Perl_scan_num(pTHX_ const char *start, YYSTYPE* lvalp)
+ 	   */
+ 	    NV n = 0.0;
+ 	    UV u = 0;
+-	    I32 shift;
+ 	    bool overflowed = FALSE;
+ 	    bool just_zero  = TRUE;	/* just plain 0 or binary number? */
+ 	    static const NV nvshift[5] = { 1.0, 2.0, 4.0, 8.0, 16.0 };
+@@ -11369,8 +11367,21 @@ Perl_scan_num(pTHX_ const char *start, YYSTYPE* lvalp)
+         if (hexfp) {
+             floatit = TRUE;
+             *d++ = '0';
+-            *d++ = 'x';
+-            s = start + 2;
++            switch (shift) {
++            case 4:
++                *d++ = 'x';
++                s = start + 2;
++                break;
++            case 3:
++                s = start + 1;
++                break;
++            case 1:
++                *d++ = 'b';
++                s = start + 2;
++                break;
++            default:
++                NOT_REACHED; /* NOTREACHED */
++            }
+         }
+ 
+ 	/* read next group of digits and _ and copy into d */
+-- 
+2.21.0
+

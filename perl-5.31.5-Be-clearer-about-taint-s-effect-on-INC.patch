@@ -1,0 +1,32 @@
+From a1c1fa25b1b25efb11cc8f987e007d4dd20056bc Mon Sep 17 00:00:00 2001
+From: Dave Cross <dave@dave.org.uk>
+Date: Wed, 23 Oct 2019 12:50:01 +0100
+Subject: [PATCH] Be clearer about taint's effect on @INC.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ pod/perlsec.pod | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/pod/perlsec.pod b/pod/perlsec.pod
+index 0682674143..a631981ba5 100644
+--- a/pod/perlsec.pod
++++ b/pod/perlsec.pod
+@@ -269,8 +269,9 @@ problem will be reported:
+   Insecure dependency in require while running with -T switch
+ 
+ On versions of Perl before 5.26, activating taint mode will also remove
+-the current directory (".") from C<@INC>. Since version 5.26, the
+-current directory isn't included in C<@INC>.
++the current directory (".") from the default value of C<@INC>. Since
++version 5.26, the current directory isn't included in C<@INC> by
++default.
+ 
+ =head2 Cleaning Up Your Path
+ 
+-- 
+2.21.0
+
