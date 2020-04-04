@@ -87,7 +87,7 @@ License:        GPL+ or Artistic
 Epoch:          %{perl_epoch}
 Version:        %{perl_version}
 # release number must be even higher, because dual-lived modules will be broken otherwise
-Release:        451%{?dist}
+Release:        452%{?dist}
 Summary:        Practical Extraction and Report Language
 Url:            https://www.perl.org/
 Source0:        https://www.cpan.org/src/5.0/perl-%{perl_version}.tar.xz
@@ -3243,7 +3243,7 @@ done
 # Normalize shell bangs in tests.
 # brp-mangle-shebangs executed by rpm-build chokes on t/TEST.
 %{new_perl} -MConfig -i -pn \
-    -e 's"\A#!(?:perl|\./perl|/usr/bin/perl|/usr/bin/env perl)\b"$Config{startperl}"' \
+    -e 's"\A#!(?:perl|\./perl|/perl|/usr/bin/perl|/usr/bin/env perl)\b"$Config{startperl}"' \
     $(find %{buildroot}%{perl5_testdir}/perl-tests -type f)
 
 %if %{with perl_enables_systemtap}
@@ -5240,6 +5240,9 @@ popd
 
 # Old changelog entries are preserved in CVS.
 %changelog
+* Fri Mar 13 2020 Petr Pisar <ppisar@redhat.com> - 4:5.30.1-452
+- Fix shebangs (bug #1813199)
+
 * Tue Jan 07 2020 Jitka Plesnikova <jplesnik@redhat.com> - 4:5.30.1-451
 - Rebuild of bootstrapped packages
 
